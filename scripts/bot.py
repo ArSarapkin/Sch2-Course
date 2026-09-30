@@ -86,7 +86,8 @@ def main():
                     log(f"dig → {resource}, sell: {status} {sold}")
             elif status == 429:
                 stats["too_early"] += 1
-                log(f"dig: 429, ждать ещё {headers.get('Retry-After-Ms')} мс")
+                reason = body.get("reason") if isinstance(body, dict) else None
+                log(f"dig: 429 {reason}, ждать ещё {headers.get('Retry-After-Ms')} мс")
             else:
                 stats["errors"] += 1
                 log(f"dig: {status} {body}")
