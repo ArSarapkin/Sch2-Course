@@ -3,4 +3,4 @@ plugins {
 }
 rootProject.name = "Sch2-Course"
 
-include("mine", "city")
+include("common", "mine", "city", "admin")
