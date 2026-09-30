@@ -19,12 +19,27 @@ CREATE TABLE IF NOT EXISTS config
     PRIMARY KEY (login, key)
 );
 
+-- Деньги студента в city, целое число
+CREATE TABLE IF NOT EXISTS balance
+(
+    login VARCHAR(64) PRIMARY KEY REFERENCES student (login) ON DELETE CASCADE,
+    money BIGINT      NOT NULL DEFAULT 0 CHECK (money >= 0)
+);
+
+-- Ресурсы, добытые через dig в mine; при продаже в city запись удаляется
+CREATE TABLE IF NOT EXISTS resource
+(
+    uuid UUID        PRIMARY KEY,
+    type VARCHAR(32) NOT NULL
+);
+
 -- Успешные dig в сервисе mine; неудачные попытки (429) сюда не пишутся
 CREATE TABLE IF NOT EXISTS dig_log
 (
     id       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     time     TIMESTAMPTZ NOT NULL,
     login    VARCHAR(64) NOT NULL REFERENCES student (login) ON DELETE CASCADE,
+    -- без внешнего ключа на resource: при продаже ресурс удаляется, а лог остаётся
     resourse UUID        NOT NULL UNIQUE
 );
 

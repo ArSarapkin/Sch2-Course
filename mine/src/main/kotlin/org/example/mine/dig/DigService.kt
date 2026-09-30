@@ -2,7 +2,10 @@ package org.example.mine.dig
 
 import org.example.common.config.ConfigKeys
 import org.example.common.config.DynamicConfig
+import org.example.mine.resource.ResourceRepository
+import org.example.mine.resource.ResourceTypeRandomizer
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -11,7 +14,10 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 class DigService(
     private val digLogRepository: DigLogRepository,
+    private val resourceRepository: ResourceRepository,
+    private val resourceTypeRandomizer: ResourceTypeRandomizer,
     private val dynamicConfig: DynamicConfig,
+    private val transactionTemplate: TransactionTemplate,
 ) {
 
     /** Время последнего успешного dig по логину. Из БД читается только при старте, дальше живёт в памяти. */
@@ -41,7 +47,10 @@ class DigService(
 
         val resource = UUID.randomUUID()
         try {
-            digLogRepository.insert(now, login, resource)
+            transactionTemplate.executeWithoutResult {
+                resourceRepository.insert(resource, resourceTypeRandomizer.next())
+                digLogRepository.insert(now, login, resource)
+            }
         } catch (e: Exception) {
             // dig не записан, поэтому возвращаем прежнее время, если его никто не успел обновить
             lastDigTimes.compute(login) { _, current -> if (current == now) previous else current }

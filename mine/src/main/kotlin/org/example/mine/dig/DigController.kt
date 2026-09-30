@@ -1,6 +1,6 @@
 package org.example.mine.dig
 
-import org.example.mine.security.StudentTokenInterceptor
+import org.example.common.auth.StudentTokenInterceptor
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity

@@ -1,4 +1,4 @@
-package org.example.mine.security
+package org.example.city.security
 
 import org.example.common.auth.StudentTokenInterceptor
 import org.example.common.auth.StudentTokenService
@@ -13,7 +13,7 @@ class WebConfig(
 ) : WebMvcConfigurer {
 
     override fun addInterceptors(registry: InterceptorRegistry) {
-        registry.addInterceptor(StudentTokenInterceptor(jdbcClient, StudentTokenService.MINE))
+        registry.addInterceptor(StudentTokenInterceptor(jdbcClient, StudentTokenService.CITY))
             .addPathPatterns("/**")
             .excludePathPatterns("/error")
     }

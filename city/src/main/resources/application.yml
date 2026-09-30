@@ -22,3 +22,15 @@ spring:
 app:
   admin:
     key: ${ADMIN_KEY}
+  sell:
+    # цена продажи ресурса каждого типа
+    prices:
+      DIRT: 1
+      STONE: 2
+      CLAY: 3
+      COAL: 5
+      COPPER: 10
+      IRON: 15
+      GOLD: 40
+      DIAMOND: 100
+      TITAN: 100

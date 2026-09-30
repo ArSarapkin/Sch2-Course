@@ -22,3 +22,15 @@ spring:
 app:
   admin:
     key: ${ADMIN_KEY}
+  dig:
+    # вероятность типа добытого ресурса в процентах, сумма должна быть 100
+    resource-chances:
+      DIRT: 30
+      STONE: 25
+      CLAY: 17
+      COAL: 12
+      COPPER: 7
+      IRON: 5
+      GOLD: 2
+      DIAMOND: 1
+      TITAN: 1

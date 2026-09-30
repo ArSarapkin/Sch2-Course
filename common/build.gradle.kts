@@ -10,6 +10,8 @@ dependencies {
     implementation(platform(SpringBootPlugin.BOM_COORDINATES))
     implementation("org.springframework:spring-context")
     implementation("org.springframework:spring-jdbc")
+    implementation("org.springframework:spring-webmvc")
+    compileOnly("jakarta.servlet:jakarta.servlet-api")
     implementation("org.slf4j:slf4j-api")
 }
 
