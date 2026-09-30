@@ -12,14 +12,14 @@ class SellService(
     private val sellProperties: SellProperties,
 ) {
 
-    /** Продаёт ресурс; null, если ресурса нет. Удаление ресурса и начисление денег в одной транзакции. */
+    /**
+     * Продаёт ресурс; false, если ресурса нет (не существовал или уже продан).
+     * Удаление ресурса и начисление денег в одной транзакции.
+     */
     @Transactional
-    fun sell(login: String, resource: UUID): SellResponse? {
-        val type = resourceRepository.delete(resource) ?: return null
-        val price = sellProperties.priceOf(type)
-        val money = balanceRepository.add(login, price)
-        return SellResponse(type.name, price, money)
+    fun sell(login: String, resource: UUID): Boolean {
+        val type = resourceRepository.delete(resource) ?: return false
+        balanceRepository.add(login, sellProperties.priceOf(type))
+        return true
     }
 }
-
-data class SellResponse(val type: String, val price: Long, val money: Long)

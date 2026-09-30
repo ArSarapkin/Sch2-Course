@@ -46,7 +46,17 @@ done
 ./gradlew --quiet "${tasks[@]}"
 
 staging="$(mktemp -d)"
-trap 'rm -rf "$staging"' EXIT
+
+# Одно ssh-подключение на весь запуск: пароль ключа спрашивается один раз
+# сокет в коротком пути: ssh ограничивает его длину 104 байтами, а $TMPDIR на macOS длинный
+ssh_dir="$(mktemp -d /tmp/sch2-ssh.XXXXXX)"
+SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=$ssh_dir/cm" -o ControlPersist=120)
+remote() { ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "$@"; }
+cleanup() {
+    ssh "${SSH_OPTS[@]}" -O exit "$DEPLOY_HOST" 2>/dev/null || true
+    rm -rf "$staging" "$ssh_dir"
+}
+trap cleanup EXIT
 cp deploy/Dockerfile "$staging/Dockerfile"
 for service in $DEPLOY_SERVICES; do
     mkdir -p "$staging/$service"
@@ -54,14 +64,15 @@ for service in $DEPLOY_SERVICES; do
 done
 
 log "Загрузка на $DEPLOY_HOST:$DEPLOY_DIR/releases/$VERSION"
-tar -C "$staging" -czf - . | ssh "$DEPLOY_HOST" "mkdir -p '$DEPLOY_DIR/releases/$VERSION' && tar -xzf - -C '$DEPLOY_DIR/releases/$VERSION'"
+# без xattr macOS, иначе tar на сервере ругается на неизвестные заголовки
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$staging" -czf - . | remote "mkdir -p '$DEPLOY_DIR/releases/$VERSION' && tar -xzf - -C '$DEPLOY_DIR/releases/$VERSION'"
 
 log "Загрузка .env в $DEPLOY_HOST:$DEPLOY_DIR/.env"
 # файл с паролями доступен на сервере только владельцу; chmod — на случай, если он уже был с другими правами
-ssh "$DEPLOY_HOST" "umask 077 && cat > '$DEPLOY_DIR/.env' && chmod 600 '$DEPLOY_DIR/.env'" < .env
+remote "umask 077 && cat > '$DEPLOY_DIR/.env' && chmod 600 '$DEPLOY_DIR/.env'" < .env
 
 log "Разворачивание на сервере"
-ssh "$DEPLOY_HOST" bash -s -- "$DEPLOY_DIR" "$VERSION" $DEPLOY_SERVICES <<'REMOTE'
+remote bash -s -- "$DEPLOY_DIR" "$VERSION" $DEPLOY_SERVICES <<'REMOTE'
 set -euo pipefail
 
 DEPLOY_DIR="$1"
@@ -90,7 +101,8 @@ fi
 for service in "${SERVICES[@]}"; do
     echo "--- образ sch2-$service:$VERSION"
     cp "$RELEASE_DIR/Dockerfile" "$RELEASE_DIR/$service/Dockerfile"
-    docker build --quiet --tag "sch2-$service:$VERSION" "$RELEASE_DIR/$service" >/dev/null
+    # при первом запуске здесь скачивается базовый образ, это может занять пару минут
+    docker build --tag "sch2-$service:$VERSION" "$RELEASE_DIR/$service"
 done
 rm -rf "$RELEASE_DIR"
 
