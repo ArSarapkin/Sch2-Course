@@ -4,3 +4,17 @@ server:
 spring:
   application:
     name: city
+  config:
+    # .env лежит в корне проекта: первый путь — запуск из корня (IDE, java -jar), второй — из папки модуля (bootRun, тесты)
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # схема ведётся в db/ в корне проекта, Hibernate её не трогает
+      ddl-auto: none
