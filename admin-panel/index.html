@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Админ-панель</title>
+<style>
+    :root {
+        --bg: #f6f6f4;
+        --card: #ffffff;
+        --text: #1d1d1b;
+        --muted: #76766f;
+        --line: #e3e3de;
+        --accent: #2f5d50;
+        --accent-text: #ffffff;
+        --error: #b3402e;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #171716;
+            --card: #20201e;
+            --text: #ecece8;
+            --muted: #96968e;
+            --line: #34342f;
+            --accent: #7fb8a6;
+            --accent-text: #12201c;
+            --error: #e58a78;
+        }
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
+    h1 { margin: 0; font-size: 22px; font-weight: 600; }
+    h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-top: 18px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 160px; min-width: 0; }
+    .row > button { flex: 0 0 auto; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    input, select, button {
+        font: inherit;
+        color: inherit;
+        height: 38px;
+        padding: 0 11px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--bg);
+    }
+    input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button { cursor: pointer; background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 500; }
+    button:disabled { cursor: default; opacity: .4; }
+    button.quiet { background: none; color: var(--muted); border-color: var(--line); font-weight: 400; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 13px; font-weight: 500; color: var(--muted); padding: 0 10px 8px 0; }
+    td { padding: 8px 10px 8px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+    td:last-child, th:last-child { padding-right: 0; width: 1%; }
+    td.key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    td input { width: 100%; min-width: 110px; }
+    .muted { color: var(--muted); }
+    .message { min-height: 22px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+    .message.error { color: var(--error); }
+    #login { max-width: 360px; margin: 18vh auto 0; }
+    #login p { margin: 6px 0 16px; color: var(--muted); }
+    [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+    <section id="login" class="card" hidden>
+        <h1>Админ-панель</h1>
+        <p>Введите ADMIN_KEY, чтобы продолжить.</p>
+        <form id="login-form" class="row">
+            <input id="login-key" type="password" placeholder="ADMIN_KEY" autocomplete="current-password" required>
+            <button>Войти</button>
+        </form>
+        <div id="login-message" class="message error"></div>
+    </section>
+
+    <section id="app" hidden>
+        <div class="top">
+            <h1>Динамический конфиг</h1>
+            <button id="logout" class="quiet">Выйти</button>
+        </div>
+
+        <div class="card">
+            <h2>Добавить или изменить</h2>
+            <form id="add-form" class="row">
+                <input id="add-login" list="logins" placeholder="Логин" required>
+                <select id="add-key" required></select>
+                <input id="add-value" placeholder="Значение" required>
+                <button>Сохранить</button>
+            </form>
+            <div id="add-message" class="message"></div>
+        </div>
+
+        <div class="card">
+            <h2>Значения</h2>
+            <div class="row">
+                <input id="filter-login" list="logins" placeholder="Фильтр по логину">
+                <select id="filter-key"></select>
+            </div>
+            <div class="table-wrap" style="margin-top: 16px">
+                <table>
+                    <thead><tr><th>Логин</th><th>Ключ</th><th>Значение</th><th></th></tr></thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div id="list-message" class="message"></div>
+        </div>
+
+        <datalist id="logins"></datalist>
+    </section>
+</main>
+
+<script>
+    // Страница лежит в /admin/, запросы к сервису admin идут через прокси /admin/api/
+    const API = 'api';
+    const KEY_STORAGE = 'adminKey';
+    const $ = id => document.getElementById(id);
+
+    let adminKey = sessionStorage.getItem(KEY_STORAGE);
+
+    async function api(path, options = {}) {
+        const response = await fetch(`${API}${path}`, {
+            ...options,
+            headers: {
+                'Authorization': `Bearer ${adminKey}`,
+                ...(options.body ? {'Content-Type': 'application/json'} : {}),
+            },
+        });
+        if (response.status === 401) {
+            showLogin('Неверный ключ.');
+            throw new Error('unauthorized');
+        }
+        if (!response.ok) {
+            throw Object.assign(new Error(`HTTP ${response.status}`), {status: response.status});
+        }
+        return response.json();
+    }
+
+    function setMessage(id, text, isError = false) {
+        const el = $(id);
+        el.textContent = text;
+        el.classList.toggle('error', isError);
+    }
+
+    function describe(error) {
+        if (error.status === 404) return 'Студент с таким логином не зарегистрирован.';
+        if (error.status === 400) return 'Неизвестный ключ или пустое значение.';
+        if (error.status) return `Ошибка сервера (${error.status}).`;
+        return 'Сервис admin недоступен.';
+    }
+
+    function showLogin(message = '') {
+        adminKey = null;
+        sessionStorage.removeItem(KEY_STORAGE);
+        $('app').hidden = true;
+        $('login').hidden = false;
+        $('login-message').textContent = message;
+        $('login-key').value = '';
+        $('login-key').focus();
+    }
+
+    // Ключ проверяется первым же запросом; без верного ключа панель не открывается
+    async function enter() {
+        let keys, logins;
+        try {
+            [keys, logins] = await Promise.all([api('/config/keys'), api('/students')]);
+        } catch (error) {
+            if (error.message !== 'unauthorized') showLogin(describe(error));
+            return;
+        }
+        sessionStorage.setItem(KEY_STORAGE, adminKey);
+
+        const option = (value, text = value) => Object.assign(document.createElement('option'), {value, textContent: text});
+        $('add-key').replaceChildren(...keys.map(key => option(key)));
+        $('filter-key').replaceChildren(option('', 'Все ключи'), ...keys.map(key => option(key)));
+        $('logins').replaceChildren(...logins.map(login => option(login)));
+
+        $('login').hidden = true;
+        $('app').hidden = false;
+        await loadRows();
+    }
+
+    async function save(entry) {
+        return api('/config', {method: 'PUT', body: JSON.stringify(entry)});
+    }
+
+    function renderRow(entry) {
+        const tr = document.createElement('tr');
+        const login = Object.assign(document.createElement('td'), {textContent: entry.login});
+        const key = Object.assign(document.createElement('td'), {textContent: entry.key, className: 'key'});
+        const input = Object.assign(document.createElement('input'), {value: entry.value});
+        const button = Object.assign(document.createElement('button'), {textContent: 'Сохранить', disabled: true});
+
+        const changed = () => input.value.trim() !== '' && input.value !== entry.value;
+        input.addEventListener('input', () => { button.disabled = !changed(); });
+        input.addEventListener('keydown', event => { if (event.key === 'Enter' && changed()) button.click(); });
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+                await save({login: entry.login, key: entry.key, value: input.value});
+                entry.value = input.value;
+                setMessage('list-message', `Сохранено: ${entry.login} · ${entry.key} = ${entry.value}`);
+            } catch (error) {
+                if (error.message === 'unauthorized') return;
+                setMessage('list-message', describe(error), true);
+                button.disabled = !changed();
+            }
+        });
+
+        const valueCell = document.createElement('td');
+        valueCell.append(input);
+        const actionCell = document.createElement('td');
+        actionCell.append(button);
+        tr.append(login, key, valueCell, actionCell);
+        return tr;
+    }
+
+    let loadSeq = 0;
+    async function loadRows() {
+        const seq = ++loadSeq;
+        const query = new URLSearchParams({login: $('filter-login').value, key: $('filter-key').value});
+        try {
+            const entries = await api(`/config?${query}`);
+            if (seq !== loadSeq) return; // пришёл ответ на устаревший фильтр
+            $('rows').replaceChildren(...entries.map(renderRow));
+            setMessage('list-message', entries.length ? '' : 'Записей нет.');
+        } catch (error) {
+            if (error.message !== 'unauthorized') setMessage('list-message', describe(error), true);
+        }
+    }
+
+    $('login-form').addEventListener('submit', event => {
+        event.preventDefault();
+        adminKey = $('login-key').value.trim();
+        $('login-message').textContent = '';
+        enter();
+    });
+
+    $('logout').addEventListener('click', () => showLogin());
+
+    $('add-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const entry = {login: $('add-login').value.trim(), key: $('add-key').value, value: $('add-value').value.trim()};
+        try {
+            await save(entry);
+            setMessage('add-message', `Сохранено: ${entry.login} · ${entry.key} = ${entry.value}`);
+            $('add-value').value = '';
+            await loadRows();
+        } catch (error) {
+            if (error.message !== 'unauthorized') setMessage('add-message', describe(error), true);
+        }
+    });
+
+    let filterTimer;
+    $('filter-login').addEventListener('input', () => {
+        clearTimeout(filterTimer);
+        filterTimer = setTimeout(loadRows, 250);
+    });
+    $('filter-key').addEventListener('change', loadRows);
+
+    if (adminKey) enter(); else showLogin();
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.example.common.auth.TokenHash
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -40,6 +41,10 @@ class StudentController(
 
         return RegisterResponse(mineToken, cityToken)
     }
+
+    /** Логины всех студентов, для подсказок в админ-панели. */
+    @GetMapping("/students")
+    fun students(): List<String> = studentRepository.findLogins()
 }
 
 data class RegisterRequest(

@@ -37,4 +37,16 @@ class StudentRepository(
             .update()
         return true
     }
+
+    fun exists(login: String): Boolean =
+        jdbcClient.sql("SELECT EXISTS (SELECT 1 FROM student WHERE login = :login)")
+            .param("login", login)
+            .query(Boolean::class.javaObjectType)
+            .single()
+
+    fun findLogins(): List<String> =
+        jdbcClient.sql("SELECT login FROM student ORDER BY login")
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
 }

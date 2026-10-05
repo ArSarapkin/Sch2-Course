@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Собирает mine, city и admin из текущего кода и разворачивает их в Docker на сервере,
-# сворачивая уже запущенные там версии.
+# Собирает mine, city, admin и админ-панель (panel) из текущего кода и разворачивает их в Docker
+# на сервере, сворачивая уже запущенные там версии.
 #
 #   ./deploy/deploy.sh
 #
 # Переменные окружения:
 #   DEPLOY_HOST        адрес сервера для ssh (user@host или алиас из ~/.ssh/config), по умолчанию 51.250.102.79
 #   DEPLOY_DIR         папка проекта на сервере, по умолчанию /opt/sch2
-#   DEPLOY_SERVICES    какие сервисы разворачивать, по умолчанию "mine city admin"
+#   DEPLOY_SERVICES    что разворачивать, по умолчанию "mine city admin panel"
+#   DEPLOY_PANEL_PORT  порт админ-панели (http://<сервер>:<порт>/admin), по умолчанию 80
 #
 # На сервере нужен Docker (без sudo). Локальный .env из корня проекта копируется в $DEPLOY_DIR/.env
 # и заменяет прежний. Контейнеры запускаются в сети хоста, поэтому DB_HOST в .env должен указывать
@@ -18,7 +19,8 @@ set -euo pipefail
 
 DEPLOY_HOST="${DEPLOY_HOST:-51.250.102.79}"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/sch2}"
-DEPLOY_SERVICES="${DEPLOY_SERVICES:-mine city admin}"
+DEPLOY_SERVICES="${DEPLOY_SERVICES:-mine city admin panel}"
+DEPLOY_PANEL_PORT="${DEPLOY_PANEL_PORT:-80}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -40,10 +42,13 @@ fi
 log "Сборка $VERSION: $DEPLOY_SERVICES"
 tasks=()
 for service in $DEPLOY_SERVICES; do
-    tasks+=(":$service:bootJar")
+    # panel — статическая страница, собирать нечего
+    [[ "$service" == panel ]] || tasks+=(":$service:bootJar")
 done
-# тесты требуют живую БД, поэтому собираем только jar
-./gradlew --quiet "${tasks[@]}"
+if [[ ${#tasks[@]} -gt 0 ]]; then
+    # тесты требуют живую БД, поэтому собираем только jar
+    ./gradlew --quiet "${tasks[@]}"
+fi
 
 staging="$(mktemp -d)"
 
@@ -57,10 +62,14 @@ cleanup() {
     rm -rf "$staging" "$ssh_dir"
 }
 trap cleanup EXIT
-cp deploy/Dockerfile "$staging/Dockerfile"
 for service in $DEPLOY_SERVICES; do
     mkdir -p "$staging/$service"
-    cp "$service/build/libs/$service-1.0-SNAPSHOT.jar" "$staging/$service/app.jar"
+    if [[ "$service" == panel ]]; then
+        cp admin-panel/Dockerfile admin-panel/nginx.conf.template admin-panel/index.html "$staging/$service/"
+    else
+        cp deploy/Dockerfile "$staging/$service/Dockerfile"
+        cp "$service/build/libs/$service-1.0-SNAPSHOT.jar" "$staging/$service/app.jar"
+    fi
 done
 
 log "Загрузка на $DEPLOY_HOST:$DEPLOY_DIR/releases/$VERSION"
@@ -72,12 +81,13 @@ log "Загрузка .env в $DEPLOY_HOST:$DEPLOY_DIR/.env"
 remote "umask 077 && cat > '$DEPLOY_DIR/.env' && chmod 600 '$DEPLOY_DIR/.env'" < .env
 
 log "Разворачивание на сервере"
-remote bash -s -- "$DEPLOY_DIR" "$VERSION" $DEPLOY_SERVICES <<'REMOTE'
+remote bash -s -- "$DEPLOY_DIR" "$VERSION" "$DEPLOY_PANEL_PORT" $DEPLOY_SERVICES <<'REMOTE'
 set -euo pipefail
 
 DEPLOY_DIR="$1"
 VERSION="$2"
-shift 2
+PANEL_PORT="$3"
+shift 3
 SERVICES=("$@")
 
 RELEASE_DIR="$DEPLOY_DIR/releases/$VERSION"
@@ -88,6 +98,7 @@ port_of() {
         mine) echo 8081 ;;
         city) echo 8082 ;;
         admin) echo 8083 ;;
+        panel) echo "$PANEL_PORT" ;;
         *) echo "Неизвестный сервис: $1" >&2; exit 1 ;;
     esac
 }
@@ -100,7 +111,6 @@ fi
 # Сначала собираем все образы, чтобы при ошибке сборки старые версии остались работать
 for service in "${SERVICES[@]}"; do
     echo "--- образ sch2-$service:$VERSION"
-    cp "$RELEASE_DIR/Dockerfile" "$RELEASE_DIR/$service/Dockerfile"
     # при первом запуске здесь скачивается базовый образ, это может занять пару минут
     docker build --tag "sch2-$service:$VERSION" "$RELEASE_DIR/$service"
 done
@@ -116,13 +126,20 @@ for service in "${SERVICES[@]}"; do
         docker rm -f $old >/dev/null
     fi
 
+    # панели секреты не нужны, только её порт; сервисам — переменные из .env
+    if [[ "$service" == panel ]]; then
+        env_args=(--env "PANEL_PORT=$PANEL_PORT")
+    else
+        env_args=(--env-file "$ENV_FILE")
+    fi
+
     echo "--- $service: запуск $VERSION на порту $port"
     docker run -d \
         --name "sch2-$service" \
         --label "sch2.service=$service" \
         --label "sch2.version=$VERSION" \
         --network host \
-        --env-file "$ENV_FILE" \
+        "${env_args[@]}" \
         --restart unless-stopped \
         "sch2-$service:$VERSION" >/dev/null
 
@@ -153,3 +170,6 @@ done
 REMOTE
 
 log "Готово: $VERSION"
+if [[ " $DEPLOY_SERVICES " == *" panel "* ]]; then
+    echo "Админ-панель: http://${DEPLOY_HOST##*@}:$DEPLOY_PANEL_PORT/admin"
+fi
