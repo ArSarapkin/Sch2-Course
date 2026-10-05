@@ -42,6 +42,13 @@ class ConfigRepository(
             .update()
     }
 
+    /** @return false, если такой записи не было. */
+    fun delete(login: String, key: String): Boolean =
+        jdbcClient.sql("DELETE FROM config WHERE login = :login AND key = :key")
+            .param("login", login)
+            .param("key", key)
+            .update() == 1
+
     private companion object {
         private const val MAX_ROWS = 1000
     }

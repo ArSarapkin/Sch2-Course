@@ -5,11 +5,13 @@ import jakarta.validation.constraints.NotBlank
 import org.example.admin.student.StudentRepository
 import org.example.common.config.ConfigKeys
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 
@@ -44,6 +46,15 @@ class ConfigController(
         }
         configRepository.upsert(entry)
         return entry
+    }
+
+    /** Удаляет значение; после этого сервисы берут для студента значение по умолчанию. */
+    @DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(@RequestParam login: String, @RequestParam key: String) {
+        if (!configRepository.delete(login, key)) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "No config '$key' for student '$login'")
+        }
     }
 }
 

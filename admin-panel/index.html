@@ -55,6 +55,9 @@
     button { cursor: pointer; background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 500; }
     button:disabled { cursor: default; opacity: .4; }
     button.quiet { background: none; color: var(--muted); border-color: var(--line); font-weight: 400; }
+    button.danger { background: none; color: var(--error); border-color: var(--line); font-weight: 400; }
+    td.actions { white-space: nowrap; }
+    td.actions button + button { margin-left: 6px; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 13px; font-weight: 500; color: var(--muted); padding: 0 10px 8px 0; }
@@ -141,7 +144,7 @@
         if (!response.ok) {
             throw Object.assign(new Error(`HTTP ${response.status}`), {status: response.status});
         }
-        return response.json();
+        return response.status === 204 ? null : response.json();
     }
 
     function setMessage(id, text, isError = false) {
@@ -215,10 +218,29 @@
             }
         });
 
+        const remove = Object.assign(document.createElement('button'), {textContent: 'Удалить', className: 'danger'});
+        remove.addEventListener('click', async () => {
+            if (!confirm(`Удалить ${entry.key} у ${entry.login}?`)) return;
+            remove.disabled = true;
+            try {
+                await api(`/config?${new URLSearchParams({login: entry.login, key: entry.key})}`, {method: 'DELETE'});
+            } catch (error) {
+                if (error.message === 'unauthorized') return;
+                // 404 — запись уже удалили, строку всё равно убираем
+                if (error.status !== 404) {
+                    setMessage('list-message', describe(error), true);
+                    remove.disabled = false;
+                    return;
+                }
+            }
+            tr.remove();
+            setMessage('list-message', `Удалено: ${entry.login} · ${entry.key}`);
+        });
+
         const valueCell = document.createElement('td');
         valueCell.append(input);
-        const actionCell = document.createElement('td');
-        actionCell.append(button);
+        const actionCell = Object.assign(document.createElement('td'), {className: 'actions'});
+        actionCell.append(button, remove);
         tr.append(login, key, valueCell, actionCell);
         return tr;
     }
